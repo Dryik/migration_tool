@@ -1,0 +1,138 @@
+# Customer Migration Configuration
+# ================================
+# Example configuration for importing customer data into Odoo
+
+name: customer_migration
+version: "1.0"
+
+# Odoo Connection
+# ===============
+# Use environment variables for security
+odoo:
+  url: ${ODOO_URL}
+  database: ${ODOO_DB}
+  username: ${ODOO_USER}
+  password: ${ODOO_PASSWORD}
+  timeout: 120
+
+# Import Settings
+# ===============
+import:
+  chunk_size: 500          # Records per batch
+  retry_attempts: 3        # Retries on failure
+  retry_delay: 2.0         # Seconds between retries
+  stop_on_error: false     # Continue on errors
+  dry_run: false           # Set true for validation only
+
+# Logging
+# =======
+logging:
+  level: INFO
+  output_dir: ./logs
+  export_json: true
+  export_csv: true
+  console_progress: true
+
+# Model Configurations
+# ====================
+models:
+  # Product Categories (import first due to dependencies)
+  - model: product.category
+    source: data/categories.csv
+    enabled: true
+    priority: 10
+    mapping:
+      Category Name: name
+      Parent Category: parent_id
+    validation:
+      required:
+        - name
+
+  # Partners (Customers & Vendors)
+  - model: res.partner
+    source: data/customers.xlsx
+    sheet: Customers
+    enabled: true
+    priority: 20
+    mapping:
+      Customer Name: name
+      Email: email
+      Phone: phone
+      Mobile: mobile
+      Street Address: street
+      City: city
+      Country: country_id
+      VAT Number: vat
+      Internal Reference: ref
+      Notes: comment
+    dedupe:
+      keys:
+        - name
+        - phone
+      strategy: update     # skip | update | create
+      case_sensitive: false
+      match_odoo: true
+      match_batch: true
+    transforms:
+      phone: normalize_phone
+      mobile: normalize_phone
+      email: normalize_email
+    validation:
+      required:
+        - name
+    defaults:
+      is_company: false
+      customer_rank: 1
+      active: true
+
+  # Products
+  - model: product.template
+    source: data/products.xlsx
+    sheet: Products
+    enabled: true
+    priority: 30
+    mapping:
+      Product Name: name
+      SKU: default_code
+      Barcode: barcode
+      Category: categ_id
+      Sales Price: list_price
+      Cost: standard_price
+      Unit of Measure: uom_id
+      Product Type: detailed_type
+      Description: description
+    dedupe:
+      keys:
+        - default_code
+      strategy: update
+    transforms:
+      list_price: normalize_numeric
+      standard_price: normalize_numeric
+    validation:
+      required:
+        - name
+    defaults:
+      detailed_type: consu
+      sale_ok: true
+      purchase_ok: true
+      active: true
+
+  # Chart of Accounts (Optional)
+  - model: account.account
+    source: data/chart_of_accounts.csv
+    enabled: false         # Enable when ready
+    priority: 5            # Import first (no dependencies)
+    mapping:
+      Account Code: code
+      Account Name: name
+      Account Type: account_type
+      Allow Reconciliation: reconcile
+    dedupe:
+      keys:
+        - code
+      strategy: skip       # Don't update existing accounts
+    validation:
+      required:
+        - code
+        - name
+        - account_type

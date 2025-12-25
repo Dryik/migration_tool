@@ -1,0 +1,11 @@
+Customer Name,Email,Phone,Street,City,Country,Is Company,Notes
+Acme Corporation,contact@acme.com,+1-555-0100,123 Main Street,New York,United States,yes,Major customer
+Beta Industries,info@beta-ind.com,+1-555-0200,456 Oak Avenue,Los Angeles,United States,yes,Preferred vendor
+John Smith,john.smith@email.com,+1-555-0301,789 Pine Road,Chicago,United States,no,Individual customer
+Jane Doe,jane.doe@email.com,+1-555-0302,321 Elm Street,Houston,United States,no,
+Gamma Solutions,sales@gamma.com,+1-555-0400,555 Tech Park,San Francisco,United States,yes,Technology partner
+Delta Corp,hello@delta-corp.com,+1-555-0500,777 Business Blvd,Seattle,United States,yes,
+Michael Johnson,m.johnson@email.com,+1-555-0601,999 Cedar Lane,Boston,United States,no,VIP customer
+Sarah Williams,sarah.w@email.com,+1-555-0602,111 Maple Drive,Denver,United States,no,
+Epsilon LLC,contact@epsilon.com,+1-555-0700,222 Industrial Way,Phoenix,United States,yes,New customer 2024
+Robert Brown,r.brown@email.com,+1-555-0801,333 Valley Road,Portland,United States,no,

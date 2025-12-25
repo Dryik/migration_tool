@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "odoo-migration-tool"
+version = "1.0.0"
+description = "A CLI tool for cleaning, validating, and importing data into Odoo via XML-RPC/JSON-RPC APIs"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Odoo Implementation Team"}
+]
+keywords = ["odoo", "migration", "import", "data", "erp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+]
+
+dependencies = [
+    "pandas>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic[email]>=2.0.0",
+    "typer>=0.9.0",
+    "pyyaml>=6.0",
+    "openpyxl>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pandas-stubs>=2.0.0",
+]
+
+[project.scripts]
+migrate = "migration_tool.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["migration_tool*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

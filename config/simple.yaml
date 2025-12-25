@@ -1,0 +1,27 @@
+# Minimal Configuration Example
+# ==============================
+# Simplest possible config for quick testing
+
+name: simple_import
+version: "1.0"
+
+odoo:
+  url: ${ODOO_URL}
+  database: ${ODOO_DB}
+  username: ${ODOO_USER}
+  password: ${ODOO_PASSWORD}
+
+import:
+  chunk_size: 100
+  dry_run: true  # Start with dry run
+
+models:
+  - model: res.partner
+    source: customers.csv
+    mapping:
+      Name: name
+      Email: email
+      Phone: phone
+    validation:
+      required:
+        - name

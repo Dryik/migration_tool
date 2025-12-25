@@ -1,0 +1,94 @@
+# Sample Data Import Configuration
+# =================================
+# Use this to test with the provided sample data
+
+name: sample_import
+version: "1.0"
+
+odoo:
+  url: ${ODOO_URL}
+  database: ${ODOO_DB}
+  username: ${ODOO_USER}
+  password: ${ODOO_PASSWORD}
+
+import:
+  chunk_size: 100
+  retry_attempts: 3
+  dry_run: true  # Always start with dry run
+
+logging:
+  level: INFO
+  output_dir: ./logs
+  export_json: true
+  export_csv: true
+
+models:
+  # Categories first (products depend on them)
+  - model: product.category
+    source: data/sample_categories.csv
+    enabled: true
+    priority: 10
+    mapping:
+      Category Path: complete_name
+    validation:
+      required: []  # complete_name processed by adapter
+
+  # Customers
+  - model: res.partner
+    source: data/sample_customers.csv
+    enabled: true
+    priority: 20
+    mapping:
+      Customer Name: name
+      Email: email
+      Phone: phone
+      Street: street
+      City: city
+      Country: country_id
+      Is Company: is_company
+      Notes: comment
+    dedupe:
+      keys:
+        - name
+        - email
+      strategy: skip
+    transforms:
+      phone: normalize_phone
+      email: normalize_email
+      is_company: normalize_boolean
+    validation:
+      required:
+        - name
+    defaults:
+      customer_rank: 1
+      active: true
+
+  # Products
+  - model: product.template
+    source: data/sample_products.csv
+    enabled: true
+    priority: 30
+    mapping:
+      Product Name: name
+      SKU: default_code
+      Barcode: barcode
+      Category: categ_id
+      Sales Price: list_price
+      Cost: standard_price
+      Unit: uom_id
+      Product Type: detailed_type
+      Description: description
+    dedupe:
+      keys:
+        - default_code
+      strategy: skip
+    transforms:
+      list_price: normalize_numeric
+      standard_price: normalize_numeric
+    validation:
+      required:
+        - name
+    defaults:
+      sale_ok: true
+      purchase_ok: true
+      active: true
