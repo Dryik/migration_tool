@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QLineEdit, QPushButton, QScrollArea,
     QFrame, QProgressBar, QSizePolicy, QSpacerItem, QFileDialog,
-    QListView, QStackedWidget, QMessageBox
+    QListView, QStackedWidget, QMessageBox, QTabWidget, QTableWidget,
+    QTableWidgetItem, QHeaderView, QInputDialog
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -25,6 +26,7 @@ from migration_tool.core.schema import SchemaInspector, SchemaCache
 from migration_tool.core.reader import DataReader
 from migration_tool.core.cleaner import DataCleaner
 from migration_tool.odoo.adapters import get_adapter, ReferenceCache
+from migration_tool.core.templates import TemplateManager
 
 
 # ============== Settings ==============
@@ -522,6 +524,16 @@ class MainWindow(QMainWindow):
         self.mapping_rows: list = []
         self.worker: Optional[WorkerThread] = None
         
+        # New: Template manager
+        self.template_manager = TemplateManager()
+        
+        # New: Rollback support - track created IDs
+        self.last_import_ids: list[int] = []
+        self.last_import_model: str = ""
+        
+        # New: Preview data (cleaned)
+        self.preview_data: list[dict] = []
+        
         # Build UI
         central = QWidget()
         self.setCentralWidget(central)
@@ -761,6 +773,25 @@ class MainWindow(QMainWindow):
         footer_layout.addWidget(self.status_label)
         footer_layout.addSpacing(10)
         
+        # Template dropdown
+        self.template_combo = QComboBox()
+        self.template_combo.setObjectName("fieldDropdown")
+        self.template_combo.setView(QListView())
+        self.template_combo.setMinimumWidth(140)
+        self.template_combo.setMaximumWidth(180)
+        self.template_combo.addItem("📋 Templates...")
+        self.template_combo.currentTextChanged.connect(self._on_template_selected)
+        footer_layout.addWidget(self.template_combo)
+        
+        # Save template button
+        self.save_template_btn = QPushButton("💾 Save")
+        self.save_template_btn.setObjectName("outlineBtn")
+        self.save_template_btn.setMaximumWidth(80)
+        self.save_template_btn.clicked.connect(self._save_template)
+        footer_layout.addWidget(self.save_template_btn)
+        
+        footer_layout.addSpacing(10)
+        
         # Buttons
         self.validate_btn = QPushButton("Validate")
         self.validate_btn.setObjectName("outlineBtn")
@@ -768,6 +799,14 @@ class MainWindow(QMainWindow):
         self.validate_btn.setEnabled(False)
         self.validate_btn.clicked.connect(self._validate)
         footer_layout.addWidget(self.validate_btn)
+        
+        # Rollback button (initially hidden)
+        self.rollback_btn = QPushButton("↩ Undo")
+        self.rollback_btn.setObjectName("outlineBtn")
+        self.rollback_btn.setMinimumWidth(80)
+        self.rollback_btn.setEnabled(False)
+        self.rollback_btn.clicked.connect(self._rollback_import)
+        footer_layout.addWidget(self.rollback_btn)
         
         self.import_btn = QPushButton("→ Import")
         self.import_btn.setObjectName("primaryBtn")
@@ -905,6 +944,9 @@ class MainWindow(QMainWindow):
         self._set_status(f"Loaded {len(fields_data)} fields")
         if self.file_columns:
             self._build_mappings()
+        
+        # Refresh template list for this model
+        self._refresh_templates()
     
     def _connect(self):
         self._set_status("Connecting...")
@@ -1087,14 +1129,22 @@ class MainWindow(QMainWindow):
             BATCH = 50
             total = len(prepared)
             created = 0
+            created_ids = []  # Track IDs for rollback
             
             for b_start in range(0, total, BATCH):
                 b_end = min(b_start + BATCH, total)
                 batch = prepared[b_start:b_end]
-                self.client.execute(self.current_model, "create", batch)
-                created += len(batch)
+                # Create records one by one to get IDs
+                for record in batch:
+                    try:
+                        record_id = self.client.create(self.current_model, record)
+                        if record_id:
+                            created_ids.append(record_id)
+                            created += 1
+                    except Exception:
+                        pass  # Continue on error
             
-            return created, total
+            return created, total, created_ids
         
         self.worker = WorkerThread(do_import)
         self.worker.finished.connect(self._on_import_finished)
@@ -1115,7 +1165,13 @@ class MainWindow(QMainWindow):
     
     def _on_import_finished(self, result):
         self.progress_timer.stop()
-        created, total = result
+        created, total, created_ids = result
+        
+        # Store for rollback
+        self.last_import_ids = created_ids
+        self.last_import_model = self.current_model
+        self.rollback_btn.setEnabled(len(created_ids) > 0)
+        
         self.progress_bar.setValue(100)
         self.progress_text.setText(f"100% Complete: {created}/{total}")
         self._set_status(f"Import successful: {created} records created")
@@ -1132,6 +1188,107 @@ class MainWindow(QMainWindow):
         color = COLORS['error'] if error else COLORS['text_secondary']
         self.status_label.setText(f"Status: {text}")
         self.status_label.setStyleSheet(f"color: {color}; font-size: 13px;")
+    
+    # ============== Template Methods ==============
+    
+    def _refresh_templates(self):
+        """Reload template dropdown for current model."""
+        self.template_combo.blockSignals(True)
+        self.template_combo.clear()
+        self.template_combo.addItem("📋 Templates...")
+        
+        if self.current_model:
+            templates = self.template_manager.list_templates(model=self.current_model)
+            for t in templates:
+                self.template_combo.addItem(f"📄 {t.name}")
+        
+        self.template_combo.blockSignals(False)
+    
+    def _on_template_selected(self, text: str):
+        """Load selected template mappings."""
+        if text.startswith("📄 "):
+            name = text[2:].strip()
+            template = self.template_manager.load_template(name)
+            if template:
+                self._apply_template(template)
+    
+    def _apply_template(self, template):
+        """Apply template mappings to current rows."""
+        for row in self.mapping_rows:
+            file_col = row.file_col
+            if file_col in template.mappings:
+                target_field = template.mappings[file_col]
+                # Find matching dropdown item
+                for i in range(row.dropdown.count()):
+                    item_text = row.dropdown.itemText(i)
+                    if target_field in item_text:
+                        row.dropdown.setCurrentIndex(i)
+                        break
+        self._set_status(f"Loaded template: {template.name}")
+    
+    def _save_template(self):
+        """Save current mappings as template."""
+        if not self.current_model:
+            self._set_status("Select a model first", error=True)
+            return
+        
+        name, ok = QInputDialog.getText(
+            self, "Save Template", "Template name:",
+            text=f"{MODEL_LABELS.get(self.current_model, self.current_model)} Import"
+        )
+        if not ok or not name:
+            return
+        
+        # Gather mappings
+        mappings = {}
+        for row in self.mapping_rows:
+            file_col, field = row.get_mapping()
+            if field:
+                # Extract field name from label
+                for fname, info in self.fields_data.items():
+                    if info["label"] in field:
+                        mappings[file_col] = fname
+                        break
+        
+        self.template_manager.save_template(
+            name=name,
+            model=self.current_model,
+            mappings=mappings,
+        )
+        self._refresh_templates()
+        self._set_status(f"Template saved: {name}")
+    
+    # ============== Rollback Method ==============
+    
+    def _rollback_import(self):
+        """Delete all records from last import."""
+        if not self.last_import_ids or not self.client:
+            return
+        
+        count = len(self.last_import_ids)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Rollback",
+            f"Delete {count} records created in the last import?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self._set_status("Rolling back...")
+            
+            def do_rollback():
+                self.client.execute(self.last_import_model, "unlink", [self.last_import_ids])
+                return len(self.last_import_ids)
+            
+            self.worker = WorkerThread(do_rollback)
+            self.worker.finished.connect(self._on_rollback_finished)
+            self.worker.error.connect(lambda e: self._set_status(f"Rollback failed: {e[:40]}", error=True))
+            self.worker.start()
+    
+    def _on_rollback_finished(self, count):
+        self.last_import_ids = []
+        self.rollback_btn.setEnabled(False)
+        self._set_status(f"Rollback complete: {count} records deleted")
 
 
 def main():
