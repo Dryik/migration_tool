@@ -27,6 +27,8 @@ from migration_tool.core.reader import DataReader
 from migration_tool.core.cleaner import DataCleaner
 from migration_tool.odoo.adapters import get_adapter, ReferenceCache
 from migration_tool.core.templates import TemplateManager
+from migration_tool.core.quality_stats import QualityStats, QualityAnalyzer, IssueType
+from migration_tool.core.validation_rules import FieldValidator
 
 
 # ============== Settings ==============
@@ -131,24 +133,25 @@ FIELD_ICONS = {
 }
 
 
-# ============== Color Palette (Light Theme) ==============
+# ============== Color Palette (Dark Theme) ==============
 COLORS = {
-    "bg_dark": "#f8fafc",        # Light gray background
-    "bg_card": "#ffffff",         # White cards
-    "sidebar": "#ffffff",         # White sidebar
-    "border": "#e2e8f0",          # Light gray border
-    "border_light": "#cbd5e1",    # Slightly darker border
-    "text_primary": "#1e293b",    # Dark slate text
-    "text_secondary": "#64748b",  # Medium gray text
-    "text_muted": "#94a3b8",      # Muted gray text
-    "accent": "#22c55e",          # Green accent (keep)
-    "accent_hover": "#16a34a",    # Darker green hover
-    "input_bg": "#f1f5f9",        # Light input background
-    "row_odd": "#ffffff",         # White rows
-    "row_even": "#f8fafc",        # Slightly gray alternating rows
-    "dropdown_bg": "#ffffff",     # White dropdown
-    "dropdown_hover": "#f1f5f9",  # Light hover
-    "error": "#dc2626",           # Red error
+    "bg_dark": "#0c1222",
+    "bg_card": "#111827",
+    "sidebar": "#111827",
+    "border": "#1f2937",
+    "border_light": "#374151",
+    "text_primary": "#f3f4f6",
+    "text_secondary": "#9ca3af",
+    "text_muted": "#6b7280",
+    "text_sidebar": "#f3f4f6",
+    "accent": "#22c55e",
+    "accent_hover": "#16a34a",
+    "input_bg": "#1f2937",
+    "row_odd": "#111827",
+    "row_even": "#0c1222",
+    "dropdown_bg": "#1f2937",
+    "dropdown_hover": "#374151",
+    "error": "#ef4444",
 }
 
 
@@ -534,6 +537,11 @@ class MainWindow(QMainWindow):
         # New: Preview data (cleaned)
         self.preview_data: list[dict] = []
         
+        # New: Quality analysis
+        self.quality_stats: Optional[QualityStats] = None
+        self.field_validator = FieldValidator()
+        self.quality_analyzer = QualityAnalyzer()
+        
         # Build UI
         central = QWidget()
         self.setCentralWidget(central)
@@ -676,7 +684,37 @@ class MainWindow(QMainWindow):
         file_row.addWidget(browse_btn)
         
         layout.addLayout(file_row)
-        layout.addSpacing(20)
+        layout.addSpacing(15)
+        
+        # Quality Stats Dashboard
+        self.quality_panel = QWidget()
+        self.quality_panel.setStyleSheet(f"background-color: {COLORS['bg_card']}; border: 1px solid {COLORS['border']}; border-radius: 8px;")
+        self.quality_panel.setFixedHeight(60)
+        self.quality_panel.setVisible(False)  # Hidden until file loaded
+        
+        quality_layout = QHBoxLayout(self.quality_panel)
+        quality_layout.setContentsMargins(20, 0, 20, 0)
+        quality_layout.setSpacing(30)
+        
+        # Stats labels
+        self.stat_valid = self._create_stat_badge("✓ Valid", "0", COLORS['accent'])
+        self.stat_errors = self._create_stat_badge("✗ Errors", "0", COLORS['error'])
+        self.stat_warnings = self._create_stat_badge("⚠ Warnings", "0", "#f59e0b")
+        self.stat_duplicates = self._create_stat_badge("⊘ Duplicates", "0", "#8b5cf6")
+        
+        quality_layout.addWidget(self.stat_valid)
+        quality_layout.addWidget(self.stat_errors)
+        quality_layout.addWidget(self.stat_warnings)
+        quality_layout.addWidget(self.stat_duplicates)
+        quality_layout.addStretch()
+        
+        # Quality score
+        self.quality_score_label = QLabel("Score: --")
+        self.quality_score_label.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: 600;")
+        quality_layout.addWidget(self.quality_score_label)
+        
+        layout.addWidget(self.quality_panel)
+        layout.addSpacing(15)
         
         # Table Header
         header = QWidget()
@@ -1025,6 +1063,9 @@ class MainWindow(QMainWindow):
         self.file_info.setText(f"📄 {Path(self.file_path).name} • {total_rows} rows • {len(self.file_columns)} columns")
         self.file_info.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px;")
         
+        # Run quality analysis
+        self._analyze_quality()
+        
         self._set_status("File loaded")
         self.validate_btn.setEnabled(True)
         self.import_btn.setEnabled(True)
@@ -1189,6 +1230,80 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Status: {text}")
         self.status_label.setStyleSheet(f"color: {color}; font-size: 13px;")
     
+    def _create_stat_badge(self, label: str, value: str, color: str) -> QWidget:
+        """Create a stat badge widget for the quality dashboard."""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        
+        value_lbl = QLabel(value)
+        value_lbl.setObjectName("statValue")
+        value_lbl.setStyleSheet(f"color: {color}; font-size: 18px; font-weight: 700; background: transparent;")
+        layout.addWidget(value_lbl)
+        
+        label_lbl = QLabel(label)
+        label_lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; background: transparent;")
+        layout.addWidget(label_lbl)
+        
+        widget.value_label = value_lbl  # Store reference for updates
+        return widget
+    
+    def _update_stat_badge(self, badge: QWidget, value: int):
+        """Update a stat badge value."""
+        if hasattr(badge, 'value_label'):
+            badge.value_label.setText(str(value))
+    
+    def _analyze_quality(self):
+        """Run quality analysis on loaded file data."""
+        if not self.file_records:
+            return
+        
+        # Validate fields
+        validation_results = self.field_validator.validate_records(self.file_records)
+        
+        # Get required fields from current model
+        required_fields = []
+        if self.fields_data:
+            required_fields = [name for name, info in self.fields_data.items() if info.get("required")]
+        
+        # Analyze quality
+        self.quality_stats = self.quality_analyzer.analyze(
+            records=self.file_records,
+            required_fields=required_fields,
+            validation_results=validation_results,
+        )
+        
+        # Update dashboard
+        self._update_quality_dashboard()
+    
+    def _update_quality_dashboard(self):
+        """Update the quality dashboard with current stats."""
+        if not self.quality_stats:
+            self.quality_panel.setVisible(False)
+            return
+        
+        self.quality_panel.setVisible(True)
+        
+        stats = self.quality_stats
+        self._update_stat_badge(self.stat_valid, stats.valid_rows)
+        self._update_stat_badge(self.stat_errors, stats.error_rows)
+        self._update_stat_badge(self.stat_warnings, stats.warning_rows)
+        self._update_stat_badge(self.stat_duplicates, stats.duplicate_rows)
+        
+        # Quality score with color
+        score = stats.quality_score
+        if score >= 90:
+            score_color = COLORS['accent']
+        elif score >= 70:
+            score_color = "#f59e0b"
+        else:
+            score_color = COLORS['error']
+        
+        self.quality_score_label.setText(f"Score: {score:.0f}%")
+        self.quality_score_label.setStyleSheet(f"color: {score_color}; font-size: 13px; font-weight: 600;")
+
+    
     # ============== Template Methods ==============
     
     def _refresh_templates(self):
@@ -1277,7 +1392,7 @@ class MainWindow(QMainWindow):
             self._set_status("Rolling back...")
             
             def do_rollback():
-                self.client.execute(self.last_import_model, "unlink", [self.last_import_ids])
+                self.client.unlink(self.last_import_model, self.last_import_ids)
                 return len(self.last_import_ids)
             
             self.worker = WorkerThread(do_rollback)
