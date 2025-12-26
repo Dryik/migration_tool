@@ -812,14 +812,6 @@ class MainWindow(QMainWindow):
         self.validate_btn.clicked.connect(self._validate)
         footer_layout.addWidget(self.validate_btn)
         
-        self.rollback_btn = QPushButton("Undo")
-        self.rollback_btn.setObjectName("outlineBtn")
-        self.rollback_btn.setFixedSize(70, 36)
-        self.rollback_btn.setEnabled(False)
-        self.rollback_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.rollback_btn.clicked.connect(self._rollback_import)
-        footer_layout.addWidget(self.rollback_btn)
-        
         self.import_btn = QPushButton("Import")
         self.import_btn.setObjectName("primaryBtn")
         self.import_btn.setFixedSize(90, 36)
