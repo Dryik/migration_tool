@@ -289,8 +289,8 @@ QLineEdit:focus {{
 }}
 
 QPushButton {{
-    border-radius: 8px;
-    padding: 12px 24px;
+    border-radius: 6px;
+    padding: 10px 20px;
     font-size: 13px;
     font-weight: 500;
 }}
@@ -303,6 +303,10 @@ QPushButton#primaryBtn {{
 
 QPushButton#primaryBtn:hover {{
     background-color: {COLORS['accent_hover']};
+}}
+
+QPushButton#primaryBtn:pressed {{
+    background-color: #14532d;
 }}
 
 QPushButton#primaryBtn:disabled {{
@@ -318,6 +322,12 @@ QPushButton#outlineBtn {{
 
 QPushButton#outlineBtn:hover {{
     background-color: {COLORS['input_bg']};
+    border-color: {COLORS['text_muted']};
+}}
+
+QPushButton#outlineBtn:pressed {{
+    background-color: {COLORS['border']};
+    border-color: {COLORS['accent']};
 }}
 
 QPushButton#outlineBtn:disabled {{
@@ -412,24 +422,20 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 
 #tableHeader {{
     background-color: {COLORS['sidebar']};
-    border: 1px solid {COLORS['border']};
-    border-bottom: none;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
+    border: none;
+    border-radius: 8px 8px 0 0;
 }}
 
 #tableContainer {{
-    background-color: {COLORS['bg_dark']};
-    border: 1px solid {COLORS['border']};
-    border-top: none;
-    border-bottom-left-radius: 12px;
-    border-bottom-right-radius: 12px;
+    background-color: {COLORS['bg_card']};
+    border: none;
+    border-radius: 0 0 8px 8px;
 }}
 
 #footer {{
-    background-color: {COLORS['sidebar']};
-    border: 1px solid {COLORS['border']};
-    border-radius: 12px;
+    background-color: {COLORS['bg_card']};
+    border: none;
+    border-radius: 8px;
 }}
 """
 
@@ -511,9 +517,15 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Odoo Migration Tool")
-        self.setMinimumSize(1200, 800)
-        self.resize(1200, 800)
+        self.setMinimumSize(900, 600)
+        self.resize(1000, 700)
         self.setStyleSheet(STYLESHEET)
+        
+        # Center window on screen
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - 1000) // 2
+        y = (screen.height() - 700) // 2
+        self.move(x, y)
         
         # State
         self.client: Optional[OdooClient] = None
@@ -613,12 +625,6 @@ class MainWindow(QMainWindow):
         model_label = QLabel("MODEL SELECTOR")
         model_label.setObjectName("sectionLabel")
         layout.addWidget(model_label)
-        layout.addSpacing(12)
-        
-        self.model_search = QLineEdit()
-        self.model_search.setPlaceholderText("🔍  Search")
-        self.model_search.textChanged.connect(self._filter_models)
-        layout.addWidget(self.model_search)
         layout.addSpacing(12)
         
         self.model_buttons_layout = QVBoxLayout()
@@ -761,95 +767,64 @@ class MainWindow(QMainWindow):
         scroll.setWidget(self.rows_widget)
         table_layout.addWidget(scroll)
         
-        # Add Mapping button row
-        add_btn_widget = QWidget()
-        add_btn_widget.setStyleSheet(f"background-color: {COLORS['bg_dark']}; border-top: 1px solid {COLORS['border']};")
-        add_btn_layout = QHBoxLayout(add_btn_widget)
-        add_btn_layout.setContentsMargins(24, 12, 24, 12)
-        
-        self.add_mapping_btn = QPushButton("+ Add Mapping")
-        self.add_mapping_btn.setObjectName("addMappingBtn")
-        self.add_mapping_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_btn_layout.addWidget(self.add_mapping_btn)
-        add_btn_layout.addStretch()
-        
-        table_layout.addWidget(add_btn_widget)
-        
         layout.addWidget(table_container, 1)
-        layout.addSpacing(20)
+        layout.addSpacing(15)
         
         # Footer
         footer = QWidget()
         footer.setObjectName("footer")
-        footer.setFixedHeight(80)
+        footer.setFixedHeight(70)
+        footer.setStyleSheet(f"background-color: {COLORS['bg_card']}; border-top: 1px solid {COLORS['border']};")
         
         footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(24, 0, 24, 0)
-        footer_layout.setSpacing(20)
+        footer_layout.setContentsMargins(24, 12, 24, 12)
+        footer_layout.setSpacing(12)
         
-        # Progress section
-        progress_layout = QVBoxLayout()
-        progress_layout.setSpacing(8)
-        
-        self.progress_text = QLabel("")
-        self.progress_text.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 600;")
-        progress_layout.addWidget(self.progress_text)
-        
+        # Progress bar (left side)
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedWidth(300)
+        self.progress_bar.setFixedWidth(200)
         self.progress_bar.setFixedHeight(6)
         self.progress_bar.setTextVisible(False)
-        progress_layout.addWidget(self.progress_bar)
+        footer_layout.addWidget(self.progress_bar)
         
-        footer_layout.addLayout(progress_layout)
+        # Progress text
+        self.progress_text = QLabel("")
+        self.progress_text.setStyleSheet(f"color: {COLORS['accent']}; font-size: 12px; font-weight: 500;")
+        self.progress_text.setMinimumWidth(100)
+        footer_layout.addWidget(self.progress_text)
+        
         footer_layout.addStretch()
         
         # Status
-        self.status_label = QLabel("Status: Ready")
-        self.status_label.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px;")
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px;")
         footer_layout.addWidget(self.status_label)
-        footer_layout.addSpacing(10)
         
-        # Template dropdown
-        self.template_combo = QComboBox()
-        self.template_combo.setObjectName("fieldDropdown")
-        self.template_combo.setView(QListView())
-        self.template_combo.setMinimumWidth(140)
-        self.template_combo.setMaximumWidth(180)
-        self.template_combo.addItem("📋 Templates...")
-        self.template_combo.currentTextChanged.connect(self._on_template_selected)
-        footer_layout.addWidget(self.template_combo)
+        footer_layout.addSpacing(20)
         
-        # Save template button
-        self.save_template_btn = QPushButton("💾 Save")
-        self.save_template_btn.setObjectName("outlineBtn")
-        self.save_template_btn.setMaximumWidth(80)
-        self.save_template_btn.clicked.connect(self._save_template)
-        footer_layout.addWidget(self.save_template_btn)
-        
-        footer_layout.addSpacing(10)
-        
-        # Buttons
+        # Buttons - fixed sizes
         self.validate_btn = QPushButton("Validate")
         self.validate_btn.setObjectName("outlineBtn")
-        self.validate_btn.setMinimumWidth(100)
+        self.validate_btn.setFixedSize(90, 36)
         self.validate_btn.setEnabled(False)
+        self.validate_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.validate_btn.clicked.connect(self._validate)
         footer_layout.addWidget(self.validate_btn)
         
-        # Rollback button (initially hidden)
-        self.rollback_btn = QPushButton("↩ Undo")
+        self.rollback_btn = QPushButton("Undo")
         self.rollback_btn.setObjectName("outlineBtn")
-        self.rollback_btn.setMinimumWidth(80)
+        self.rollback_btn.setFixedSize(70, 36)
         self.rollback_btn.setEnabled(False)
+        self.rollback_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.rollback_btn.clicked.connect(self._rollback_import)
         footer_layout.addWidget(self.rollback_btn)
         
-        self.import_btn = QPushButton("→ Import")
+        self.import_btn = QPushButton("Import")
         self.import_btn.setObjectName("primaryBtn")
-        self.import_btn.setMinimumWidth(110)
+        self.import_btn.setFixedSize(90, 36)
         self.import_btn.setEnabled(False)
+        self.import_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.import_btn.clicked.connect(self._start_import)
         footer_layout.addWidget(self.import_btn)
         
