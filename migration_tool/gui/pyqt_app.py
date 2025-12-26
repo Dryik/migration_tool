@@ -1070,16 +1070,29 @@ class MainWindow(QMainWindow):
             self.mapping_rows.append(row)
     
     def _find_match(self, col: str) -> str:
+        """Find matching Odoo field for a file column, including x_ prefix support."""
         col_l = col.lower().strip().replace(" ", "_")
+        
+        # Build list of possible matches to try
+        candidates = [col, col_l]
+        # Also try x_ prefixed version for custom fields
+        if not col_l.startswith("x_"):
+            candidates.append(f"x_{col_l}")
+        
         for name, info in self.fields_data.items():
-            if name == col or name.lower() == col_l or info["label"].lower() == col.lower():
-                # Get icon
-                icon = FIELD_ICONS.get(name, "")
-                if not icon:
-                    field_type = info.get("type", "char")
-                    icon = FIELD_ICONS.get(f"_{field_type}", "≡")
-                prefix = "* " if info["required"] else ""
-                return f"{icon}  {prefix}{info['label']}"
+            name_l = name.lower()
+            label_l = info["label"].lower()
+            
+            # Check if any candidate matches
+            for candidate in candidates:
+                if name == candidate or name_l == candidate or label_l == candidate:
+                    # Get icon
+                    icon = FIELD_ICONS.get(name, "")
+                    if not icon:
+                        field_type = info.get("type", "char")
+                        icon = FIELD_ICONS.get(f"_{field_type}", "≡")
+                    prefix = "* " if info["required"] else ""
+                    return f"{icon}  {prefix}{info['label']}"
         return ""
     
     def _validate(self):
