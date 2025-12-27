@@ -984,7 +984,8 @@ class MainWindow(QMainWindow):
         self.conn_dot.setStyleSheet(f"color: {COLORS['error']}; font-size: 16px;")
         self.conn_status.setText("Connection Failed")
         self.conn_status.setObjectName("statusError")
-        self._set_status(f"Error: {error[:40]}", error=True)
+        self._set_status("Connection failed", error=True)
+        self._show_error("Connection Failed", f"Could not connect to Odoo:\n\n{error}")
     
     def _save_settings(self):
         self.settings['connection'] = {
@@ -1017,8 +1018,12 @@ class MainWindow(QMainWindow):
         
         self.worker = WorkerThread(do_load)
         self.worker.finished.connect(self._on_file_loaded)
-        self.worker.error.connect(lambda e: self._set_status(f"Error: {e[:40]}", error=True))
+        self.worker.error.connect(self._on_file_error)
         self.worker.start()
+    
+    def _on_file_error(self, error: str):
+        self._set_status("File load failed", error=True)
+        self._show_error("File Load Failed", f"Could not load file:\n\n{error}")
     
     def _on_file_loaded(self, result):
         self.file_columns, self.file_records, total_rows = result
@@ -1181,12 +1186,7 @@ class MainWindow(QMainWindow):
     
     def _on_import_finished(self, result):
         self.progress_timer.stop()
-        created, total, created_ids = result
-        
-        # Store for rollback
-        self.last_import_ids = created_ids
-        self.last_import_model = self.current_model
-        self.rollback_btn.setEnabled(len(created_ids) > 0)
+        created, total, _ = result
         
         self.progress_bar.setValue(100)
         self.progress_text.setText(f"100% Complete: {created}/{total}")
@@ -1196,13 +1196,22 @@ class MainWindow(QMainWindow):
     
     def _on_import_error(self, error: str):
         self.progress_timer.stop()
-        self._set_status(f"Import failed: {error[:40]}", error=True)
+        self._set_status("Import failed", error=True)
         self.import_btn.setEnabled(True)
         self.validate_btn.setEnabled(True)
+        self._show_error("Import Failed", f"Could not complete import:\n\n{error}")
+    
+    def _show_error(self, title: str, message: str):
+        """Show an error dialog to the user."""
+        QMessageBox.critical(self, title, message)
+    
+    def _show_warning(self, title: str, message: str):
+        """Show a warning dialog to the user."""
+        QMessageBox.warning(self, title, message)
     
     def _set_status(self, text: str, error: bool = False):
         color = COLORS['error'] if error else COLORS['text_secondary']
-        self.status_label.setText(f"Status: {text}")
+        self.status_label.setText(text)
         self.status_label.setStyleSheet(f"color: {color}; font-size: 13px;")
     
     def _create_stat_badge(self, label: str, value: str, color: str) -> QWidget:
