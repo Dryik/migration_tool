@@ -906,11 +906,6 @@ class MainWindow(QMainWindow):
                 self.model_buttons_layout.addWidget(btn)
                 self.model_buttons.append(btn)
     
-    def _filter_models(self, text: str):
-        text = text.lower()
-        for btn in self.model_buttons:
-            btn.setVisible(text in btn.text().lower())
-    
     def _select_model(self, model: str, label: str):
         # Update button styles
         for btn in self.model_buttons:
@@ -1352,38 +1347,7 @@ class MainWindow(QMainWindow):
         )
         self._refresh_templates()
         self._set_status(f"Template saved: {name}")
-    
-    # ============== Rollback Method ==============
-    
-    def _rollback_import(self):
-        """Delete all records from last import."""
-        if not self.last_import_ids or not self.client:
-            return
-        
-        count = len(self.last_import_ids)
-        reply = QMessageBox.question(
-            self,
-            "Confirm Rollback",
-            f"Delete {count} records created in the last import?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            self._set_status("Rolling back...")
-            
-            def do_rollback():
-                self.client.unlink(self.last_import_model, self.last_import_ids)
-                return len(self.last_import_ids)
-            
-            self.worker = WorkerThread(do_rollback)
-            self.worker.finished.connect(self._on_rollback_finished)
-            self.worker.error.connect(lambda e: self._set_status(f"Rollback failed: {e[:40]}", error=True))
-            self.worker.start()
-    
-    def _on_rollback_finished(self, count):
-        self.last_import_ids = []
-        self.rollback_btn.setEnabled(False)
-        self._set_status(f"Rollback complete: {count} records deleted")
+
 
 
 def main():
